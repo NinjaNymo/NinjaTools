@@ -1,2 +1,2 @@
 @echo off
-python "C:\tools\osc.py" %*
+python "osc.py" %*

@@ -1,2 +1,2 @@
 @echo off
-python "osc.py" %*
+python "%~dp0osc.py" %*

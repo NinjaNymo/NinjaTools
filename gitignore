@@ -1,5 +1,5 @@
 # Ignore local onfiguration files
-.cfg
+*.cfg
 
 # Ignore Python cache files
 __pycache__/

@@ -1,24 +1,18 @@
 #!/usr/bin/env python3
-"""
-Universal Oscilloscope Screenshot Capture Tool
-Captures and saves screenshots from oscilloscopes over LAN
-Configuration loaded from osc.cfg file
-"""
-
 import socket
 import os
 import subprocess
 import re
 import platform
 from datetime import datetime
+import sys
 
-
-def load_config(config_file="osc.cfg"):
+def load_config(config_file="osc.cfg", verbose=True):
     config = {}
-
     if not os.path.exists(config_file):
-        print(f"✗ Configuration file '{config_file}' not found")
-        print("Creating sample configuration file...")
+        if verbose:
+            print(f"✗ Configuration file '{config_file}' not found")
+            print("Creating sample configuration file...")
         sample_config = """# Oscilloscope Configuration
 vendor=Rigol
 model=DHO924
@@ -41,7 +35,8 @@ ip=192.168.1.100
 """
         with open(config_file, 'w') as f:
             f.write(sample_config)
-        print(f"✓ Sample '{config_file}' created. Please edit it with your oscilloscope details.")
+        if verbose:
+            print(f"✓ Sample '{config_file}' created. Please edit it with your oscilloscope details.")
         return None
 
     try:
@@ -57,7 +52,8 @@ ip=192.168.1.100
                     if key in ['vendor', 'model', 'mac', 'output_dir', 'output_prefix', 'ip', 'port']:
                         config[key] = value
                     else:
-                        print(f"⚠️  Unknown config key '{key}' on line {line_num}")
+                        if verbose:
+                            print(f"⚠️  Unknown config key '{key}' on line {line_num}")
 
         required_fields = ['vendor', 'model']
         for field in required_fields:
@@ -72,7 +68,6 @@ ip=192.168.1.100
         config['ip'] = config.get('ip', '').strip()
         config['mac'] = config.get('mac', '').strip().lower().replace(':', '').replace('-', '')
 
-        # Port logic: explicit > vendor default > generic default
         if 'port' in config and config['port']:
             config['port'] = int(config['port'])
         elif config['vendor'].strip().lower() == 'keysight':
@@ -80,19 +75,20 @@ ip=192.168.1.100
         else:
             config['port'] = 5555
 
-        print(f"✓ Configuration loaded: {config['vendor']} {config['model']}")
-        print(f"📂 Output directory: {config['output_dir']}")
-        if config['output_prefix']:
-            print(f"📝 Output prefix format: {config['output_prefix']}")
-        else:
-            print("📝 Output prefix: (none)")
-        if config['ip']:
-            print(f"🌐 Using direct IP: {config['ip']}")
-        elif config['mac']:
-            print(f"🔍 Will search ARP table for MAC: {config['mac']}")
-        else:
-            print("⚠️ No IP or MAC provided — connection will fail unless one is added.")
-        print(f"🔌 TCP Port: {config['port']}")
+        if verbose:
+            print(f"✓ Configuration loaded: {config['vendor']} {config['model']}")
+            print(f"📂 Output directory: {config['output_dir']}")
+            if config['output_prefix']:
+                print(f"📝 Output prefix format: {config['output_prefix']}")
+            else:
+                print("📝 Output prefix: (none)")
+            if config['ip']:
+                print(f"🌐 Using direct IP: {config['ip']}")
+            elif config['mac']:
+                print(f"🔍 Will search ARP table for MAC: {config['mac']}")
+            else:
+                print("⚠️ No IP or MAC provided — connection will fail unless one is added.")
+            print(f"🔌 TCP Port: {config['port']}")
         return config
 
     except Exception as e:
@@ -101,7 +97,8 @@ ip=192.168.1.100
 
 
 class OscilloscopeCapture:
-    def __init__(self, vendor, model, mac_address=None, output_dir=None, output_prefix="", ip_address=None, port=5555, timeout=10):
+    def __init__(self, vendor, model, mac_address=None, output_dir=None, output_prefix="",
+                 ip_address=None, port=5555, timeout=10, verbose=True):
         self.vendor = vendor.lower()
         self.model = model.upper()
         self.mac_address = mac_address if mac_address else None
@@ -111,18 +108,20 @@ class OscilloscopeCapture:
         self.sock = None
         self.output_dir = os.path.expanduser(output_dir or os.path.join("~", "Pictures", "osc"))
         self.output_prefix = output_prefix
-        print(f"🔧 Initialized {vendor} {model} capture interface")
+        self.verbose = verbose
+        self.log(f"🔧 Initialized {vendor} {model} capture interface")
+
+    def log(self, msg):
+        if self.verbose:
+            print(msg)
 
     def find_ip_by_mac(self, mac_address):
-        """ Look up IP from MAC address in ARP table (no scanning) """
+        self.log(f"🔍 Searching ARP table for MAC: {mac_address}")
         try:
-            print(f"🔍 Searching ARP table for MAC: {mac_address}")
             target_mac = mac_address.lower()
             system = platform.system().lower()
-
             result = subprocess.run(['arp', '-a'], capture_output=True, text=True)
             arp_output = result.stdout
-
             for line in arp_output.split('\n'):
                 if system == "windows":
                     if 'dynamic' in line.lower():
@@ -133,7 +132,7 @@ class OscilloscopeCapture:
                                 ip_match = re.search(r'^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)', line.strip())
                                 if ip_match:
                                     ip_addr = ip_match.group(1)
-                                    print(f"✓ Found MAC in ARP table → IP: {ip_addr}")
+                                    self.log(f"✓ Found MAC in ARP table → IP: {ip_addr}")
                                     return ip_addr
                 else:
                     if 'ether' in line.lower():
@@ -144,13 +143,12 @@ class OscilloscopeCapture:
                                 ip_match = re.search(r'\(([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\)', line)
                                 if ip_match:
                                     ip_addr = ip_match.group(1)
-                                    print(f"✓ Found MAC in ARP table → IP: {ip_addr}")
+                                    self.log(f"✓ Found MAC in ARP table → IP: {ip_addr}")
                                     return ip_addr
-
-            print("✗ MAC not found in ARP table")
+            self.log("✗ MAC not found in ARP table")
             return None
         except Exception as e:
-            print(f"✗ MAC lookup failed: {e}")
+            self.log(f"✗ MAC lookup failed: {e}")
             return None
 
     def connect(self):
@@ -164,13 +162,12 @@ class OscilloscopeCapture:
                 else:
                     print("✗ No IP address or MAC address available")
                     return False
-
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.settimeout(self.timeout)
             self.sock.connect((self.ip_address, self.port))
             print(f"✓ Connected to {self.vendor.title()} {self.model} at {self.ip_address}:{self.port}")
             if self.mac_address:
-                print(f"📱 Device MAC: {self.mac_address}")
+                self.log(f"📱 Device MAC: {self.mac_address}")
             return True
         except Exception as e:
             print(f"✗ Connection failed: {e}")
@@ -198,102 +195,141 @@ class OscilloscopeCapture:
         return self.sock.recv(1024).decode().strip()
 
     def get_screenshot_command(self):
-        vendor = self.vendor.lower()
-        if vendor == 'rigol':
+        if self.vendor == 'rigol':
             return ":DISPlay:DATA?"
-        elif vendor == 'keysight':
+        elif self.vendor == 'keysight':
             return ":DISPlay:DATA? PNG"
-        elif vendor == 'tektronix':
+        elif self.vendor == 'tektronix':
             return "HARDCopy:PORT ETHernet"
         else:
             return ":DISPlay:DATA?"
 
-    def get_screenshot(self, filename=None):
+    def get_screenshot(self, filename=None, label=None):
         if not self.sock:
             raise Exception("Not connected to oscilloscope")
-        print("📸 Capturing screenshot...")
-
+        self.log("📸 Capturing screenshot...")
         original_timeout = self.sock.gettimeout()
         self.sock.settimeout(15)
-
         try:
             self.send_command(self.get_screenshot_command())
-
             header = b""
             while len(header) < 2:
                 chunk = self.sock.recv(2 - len(header))
                 if not chunk:
                     raise Exception("Connection closed before header")
                 header += chunk
-
             if header[0:1] != b'#':
                 raise Exception("Invalid response format (missing #)")
-
             digit_count = int(chr(header[1]))
             if digit_count <= 0:
                 raise Exception("Invalid length digit in header")
-
             length_str = b""
             while len(length_str) < digit_count:
                 chunk = self.sock.recv(digit_count - len(length_str))
                 if not chunk:
                     raise Exception("Connection closed before length")
                 length_str += chunk
-
             data_length = int(length_str.decode())
-            print(f"📊 Receiving {data_length} bytes of image data...")
-
+            self.log(f"📊 Receiving {data_length} bytes of image data...")
             image_data = b""
             while len(image_data) < data_length:
                 chunk = self.sock.recv(min(4096, data_length - len(image_data)))
                 if not chunk:
                     raise Exception("Connection closed during image transfer")
                 image_data += chunk
-
             if filename is None:
                 os.makedirs(self.output_dir, exist_ok=True)
                 prefix = ""
                 if self.output_prefix == "yyyy-mm-dd":
-                    prefix = datetime.now().strftime("%Y-%m-%d") + "_"
+                    prefix = datetime.now().strftime("%Y-%m-%d")
                 elif self.output_prefix == "yyyy-mm-dd-hh-mm-ss":
-                    prefix = datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "_"
-                vendor = self.vendor.lower()
-                model = self.model.lower()
+                    prefix = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+                base_name_part = label if label else self.model.lower()
+                if prefix:
+                    base_name = f"{prefix}_{base_name_part}"
+                else:
+                    base_name = base_name_part
                 ext = self.get_default_extension()
-                filename = os.path.join(self.output_dir, f"{prefix}{vendor}_{model}_screenshot.{ext}")
-
+                counter = 1
+                while True:
+                    candidate = os.path.join(self.output_dir, f"{base_name}_{counter:02d}.{ext}")
+                    if not os.path.exists(candidate):
+                        filename = candidate
+                        break
+                    counter += 1
             with open(filename, 'wb') as f:
                 f.write(image_data)
-
             print(f"✓ Screenshot saved as: {filename}")
-            print(f"📏 File size: {len(image_data)} bytes")
             return filename
-
         finally:
             self.sock.settimeout(original_timeout)
 
     def get_default_extension(self):
-        vendor = self.vendor.lower()
-        if vendor == 'rigol':
+        if self.vendor == 'rigol':
             return 'bmp'
-        elif vendor == 'keysight':
+        elif self.vendor == 'keysight':
             return 'png'
-        elif vendor == 'tektronix':
+        elif self.vendor == 'tektronix':
             return 'png'
         return 'bmp'
 
     def get_info(self):
         try:
             info = self.query_command("*IDN?")
-            print(f"📋 Oscilloscope Info: {info}")
+            self.log(f"📋 Oscilloscope Info: {info}")
             return info
         except Exception as e:
-            print(f"✗ Failed to get info: {e}")
+            self.log(f"✗ Failed to get info: {e}")
             return None
 
 
 def main():
-    config = load_config("osc.cfg")
+    if "-o" in sys.argv:
+        config = load_config("osc.cfg", verbose=False)
+        if not config:
+            print("✗ Could not load configuration. Please check osc.cfg file.")
+            return
+        output_dir = os.path.expanduser(config.get('output_dir', os.path.join("~", "Pictures", "osc")))
+        os.makedirs(output_dir, exist_ok=True)
+        if platform.system().lower() == "windows":
+            os.startfile(output_dir)
+        elif platform.system().lower() == "darwin":
+            subprocess.run(["open", output_dir])
+        else:
+            subprocess.run(["xdg-open", output_dir])
+        return
+
+    if "-h" in sys.argv:
+        config = load_config("osc.cfg", verbose=False) or {}
+        save_loc = os.path.expanduser(config.get('output_dir', os.path.join("~", "Pictures", "osc")))
+        prefix_fmt = config.get('output_prefix', '').strip().lower() or "(none)"
+        scope_parts = [config.get('vendor', ''), config.get('model', '')]
+        if config.get('ip'): scope_parts.append(config['ip'])
+        if config.get('mac'): scope_parts.append(config['mac'])
+        if config.get('port'): scope_parts.append(str(config['port']))
+        scope_line = " / ".join([p for p in scope_parts if p])
+
+        print("Usage: osc [label] [-v] [-o] [-h]\n")
+        print("Options:")
+        print("  label        Optional filename label instead of model name (spaces become underscores)")
+        print("  -v           Verbose mode, shows detailed connection and capture info")
+        print("  -o           Opens the screenshot output directory without taking a screenshot")
+        print("  -h           Shows this help message\n")
+        print("Details:")
+        print(f"  Oscilloscope: {scope_line}")
+        print(f"  Save location: {save_loc}")
+        print(f"  Prefix format: {prefix_fmt}\n")
+        print("Examples:")
+        print("  osc testlabel")
+        print("  osc -v mylabel")
+        print("  osc -o")
+        print("  osc")
+        return
+
+    verbose = "-v" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "-v"]
+    label_arg = args[0].strip().lower().replace(" ", "_") if len(args) > 0 else None
+    config = load_config("osc.cfg", verbose=verbose)
     if not config:
         print("✗ Could not load configuration. Please check osc.cfg file.")
         return
@@ -304,14 +340,14 @@ def main():
         output_dir=config.get('output_dir'),
         output_prefix=config.get('output_prefix', ""),
         ip_address=config.get('ip', ""),
-        port=config.get('port', 5555)
+        port=config.get('port', 5555),
+        verbose=verbose
     )
     try:
         if not scope.connect():
             return
         scope.get_info()
-        screenshot_path = scope.get_screenshot()
-        print(f"\n🎉 Success! Screenshot saved to: {screenshot_path}")
+        scope.get_screenshot(label=label_arg)
     except Exception as e:
         print(f"✗ Error: {e}")
     finally:

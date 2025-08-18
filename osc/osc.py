@@ -282,6 +282,15 @@ class OscilloscopeCapture:
             self.log(f"✗ Failed to get info: {e}")
             return None
 
+def _is_wsl():
+    try:
+        return 'microsoft' in platform.uname().release.lower() or 'microsoft' in platform.version().lower()
+    except Exception:
+        try:
+            with open('/proc/version', 'r') as f:
+                return 'microsoft' in f.read().lower()
+        except Exception:
+            return False
 
 def main():
     if "-o" in sys.argv:
@@ -289,11 +298,22 @@ def main():
         if not config:
             print("✗ Could not load configuration. Please check osc.cfg file.")
             return
+
         output_dir = os.path.expanduser(config.get('output_dir', os.path.join("~", "Pictures", "osc")))
         os.makedirs(output_dir, exist_ok=True)
-        if platform.system().lower() == "windows":
+
+        system = platform.system().lower()
+        if _is_wsl():
+            # Convert to Windows path and open in Explorer
+            try:
+                res = subprocess.run(["wslpath", "-w", output_dir], capture_output=True, text=True)
+                win_path = res.stdout.strip() if res.returncode == 0 and res.stdout else output_dir
+                subprocess.run(["explorer.exe", win_path])
+            except Exception as e:
+                print(f"✗ Failed to open folder from WSL: {e}")
+        elif system == "windows":
             os.startfile(output_dir)
-        elif platform.system().lower() == "darwin":
+        elif system == "darwin":
             subprocess.run(["open", output_dir])
         else:
             subprocess.run(["xdg-open", output_dir])

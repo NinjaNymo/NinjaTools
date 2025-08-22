@@ -6,6 +6,7 @@ import re
 import platform
 from datetime import datetime
 import sys
+import time  # added for raw-stream idle timing
 
 def load_config(config_file="osc.cfg", verbose=True):
     config = {}
@@ -23,7 +24,7 @@ ip=192.168.1.100
 # Optional: MAC address (used only if IP not provided)
 # mac=aa:bb:cc:dd:ee:ff
 
-# Optional: Port number for TCP connection (default: 5555, Keysight: 5025)
+# Optional: Port number for TCP connection (default=5555, Keysight/Siglent=5025)
 # port=5025
 
 # Optional: Change screenshot save directory (default: ~/Pictures/osc)
@@ -70,7 +71,7 @@ ip=192.168.1.100
 
         if 'port' in config and config['port']:
             config['port'] = int(config['port'])
-        elif config['vendor'].strip().lower() == 'keysight':
+        elif config['vendor'].strip().lower() in ('keysight', 'siglent'):
             config['port'] = 5025
         else:
             config['port'] = 5555
@@ -201,6 +202,8 @@ class OscilloscopeCapture:
             return ":DISPlay:DATA? PNG"
         elif self.vendor == 'tektronix':
             return "HARDCopy:PORT ETHernet"
+        elif self.vendor == 'siglent':
+            return "SCDP"
         else:
             return ":DISPlay:DATA?"
 
@@ -212,31 +215,65 @@ class OscilloscopeCapture:
         self.sock.settimeout(15)
         try:
             self.send_command(self.get_screenshot_command())
-            header = b""
-            while len(header) < 2:
-                chunk = self.sock.recv(2 - len(header))
+
+            # Peek first couple of bytes to detect format
+            first = b""
+            while len(first) < 2:
+                chunk = self.sock.recv(2 - len(first))
                 if not chunk:
-                    raise Exception("Connection closed before header")
-                header += chunk
-            if header[0:1] != b'#':
-                raise Exception("Invalid response format (missing #)")
-            digit_count = int(chr(header[1]))
-            if digit_count <= 0:
-                raise Exception("Invalid length digit in header")
-            length_str = b""
-            while len(length_str) < digit_count:
-                chunk = self.sock.recv(digit_count - len(length_str))
-                if not chunk:
-                    raise Exception("Connection closed before length")
-                length_str += chunk
-            data_length = int(length_str.decode())
-            self.log(f"📊 Receiving {data_length} bytes of image data...")
-            image_data = b""
-            while len(image_data) < data_length:
-                chunk = self.sock.recv(min(4096, data_length - len(image_data)))
-                if not chunk:
-                    raise Exception("Connection closed during image transfer")
-                image_data += chunk
+                    raise Exception("Connection closed before any data")
+                first += chunk
+
+            if first[:1] == b'#':
+                # ---- IEEE 488.2 definite-length block ----
+                digit_count = int(chr(first[1]))
+                if digit_count <= 0:
+                    raise Exception("Invalid length digit in header")
+
+                length_str = b""
+                while len(length_str) < digit_count:
+                    chunk = self.sock.recv(digit_count - len(length_str))
+                    if not chunk:
+                        raise Exception("Connection closed before length")
+                    length_str += chunk
+                data_length = int(length_str.decode())
+                self.log(f"📊 Receiving {data_length} bytes of image data...")
+
+                image_data = b""
+                while len(image_data) < data_length:
+                    chunk = self.sock.recv(min(65536, data_length - len(image_data)))
+                    if not chunk:
+                        raise Exception("Connection closed during image transfer")
+                    image_data += chunk
+
+            else:
+                # ---- Raw image stream (e.g., Siglent SCDP) ----
+                # We already consumed `first` — include it
+                self.sock.setblocking(False)
+                chunks = [first]
+                last_data_time = time.time()
+                idle_ms = 150        # consider complete after ~150ms idle
+                hard_timeout = 10.0  # safety cutoff
+                start = time.time()
+
+                while (time.time() - start) < hard_timeout:
+                    try:
+                        chunk = self.sock.recv(65536)
+                        if chunk:
+                            chunks.append(chunk)
+                            last_data_time = time.time()
+                        else:
+                            time.sleep(0.01)
+                    except BlockingIOError:
+                        if (time.time() - last_data_time) * 1000 >= idle_ms:
+                            break
+                        time.sleep(0.01)
+
+                self.sock.setblocking(True)
+                image_data = b"".join(chunks)
+                self.log(f"📊 Received raw image stream: {len(image_data)} bytes")
+
+            # Filename handling (your existing prefix/label/counter logic)
             if filename is None:
                 os.makedirs(self.output_dir, exist_ok=True)
                 prefix = ""
@@ -257,11 +294,17 @@ class OscilloscopeCapture:
                         filename = candidate
                         break
                     counter += 1
+
             with open(filename, 'wb') as f:
                 f.write(image_data)
             print(f"✓ Screenshot saved as: {filename}")
             return filename
         finally:
+            # restore socket state
+            try:
+                self.sock.setblocking(True)
+            except Exception:
+                pass
             self.sock.settimeout(original_timeout)
 
     def get_default_extension(self):
@@ -271,6 +314,8 @@ class OscilloscopeCapture:
             return 'png'
         elif self.vendor == 'tektronix':
             return 'png'
+        elif self.vendor == 'siglent':
+            return 'bmp'
         return 'bmp'
 
     def get_info(self):

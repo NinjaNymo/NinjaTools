@@ -207,6 +207,36 @@ class OscilloscopeCapture:
         else:
             return ":DISPlay:DATA?"
 
+    def get_waveform_commands(self, channel=1):
+        """Returns vendor-specific commands for waveform data retrieval"""
+        if self.vendor == 'siglent':
+            return {
+                'source': f'C{channel}:WF? DAT2',
+                'vdiv': f'C{channel}:VDIV?',
+                'voffset': f'C{channel}:OFST?',
+                'tdiv': 'TDIV?',
+                'sara': 'SARA?'  # sample rate
+            }
+        elif self.vendor == 'rigol':
+            # Placeholder for Rigol support
+            return {
+                'source': f':WAV:SOUR CHAN{channel}',
+                'mode': ':WAV:MODE RAW',
+                'format': ':WAV:FORM BYTE',
+                'preamble': ':WAV:PRE?',
+                'data': ':WAV:DATA?'
+            }
+        elif self.vendor == 'keysight':
+            # Placeholder for Keysight support
+            return {
+                'source': f':WAVeform:SOURce CHANnel{channel}',
+                'format': ':WAVeform:FORMat BYTE',
+                'preamble': ':WAVeform:PREamble?',
+                'data': ':WAVeform:DATA?'
+            }
+        else:
+            raise Exception(f"Waveform export not yet supported for {self.vendor}")
+
     def get_screenshot(self, filename=None, label=None):
         if not self.sock:
             raise Exception("Not connected to oscilloscope")

@@ -1,0 +1,59 @@
+source $TELENV
+
+### Rats:
+funckey F9 "rats show"
+funckey SF9 "rats blank"
+
+### Set 0.550 grid:
+funckey F10 "define grid; FORM grid non_etch non_etch_x_grids 0.550; FORM grid non_etch non_etch_y_grids 0.550; FORM grid all_etch all_etch_x_grids 0.550; FORM grid all_etch all_etch_y_grids 0.550; FORM grid done; echo Grid = Custom 1 = 0.550mm, such via grid"
+### Set 0.1375 grid:
+funckey SF10 "define grid; FORM grid non_etch non_etch_x_grids 0.1375; FORM grid non_etch non_etch_y_grids 0.1375; FORM grid all_etch all_etch_x_grids 0.1375; FORM grid all_etch all_etch_y_grids 0.1375; FORM grid done; echo Grid = Custom 2 = 0.1375mm, perfectly aligned tracks :D"
+
+### Set 0.200 grid:
+funckey F11 "define grid; FORM grid non_etch non_etch_x_grids 0.200; FORM grid non_etch non_etch_y_grids 0.200; FORM grid all_etch all_etch_x_grids 0.200; FORM grid all_etch all_etch_y_grids 0.200; FORM grid done; echo Grid = 0.200mm, reasonable..."
+### Set 2.00 grid:
+funckey SF11 "define grid; FORM grid non_etch non_etch_x_grids 2.00; FORM grid non_etch non_etch_y_grids 2.00; FORM grid all_etch all_etch_x_grids 2.00; FORM grid all_etch all_etch_y_grids 2.00; FORM grid done; echo Grid = 2.00mm, thicc..."
+
+### Set 0.100 grid:
+funckey F12 "define grid; FORM grid non_etch non_etch_x_grids 0.100; FORM grid non_etch non_etch_y_grids 0.100; FORM grid all_etch all_etch_x_grids 0.100; FORM grid all_etch all_etch_y_grids 0.100; FORM grid done; echo Grid = 0.100mm, smol :)"
+### Set 1.00 grid:
+funckey SF12 "define grid; FORM grid non_etch non_etch_x_grids 1.00; FORM grid non_etch non_etch_y_grids 1.00; FORM grid all_etch all_etch_x_grids 1.00; FORM grid all_etch all_etch_y_grids 1.00; FORM grid done; echo Grid = 1.00mm, metric ftw"
+
+### Set 0.050 grid:
+funckey F13 "define grid; FORM grid non_etch non_etch_x_grids 0.050; FORM grid non_etch non_etch_y_grids 0.050; FORM grid all_etch all_etch_x_grids 0.050; FORM grid all_etch all_etch_y_grids 0.050; FORM grid done; echo Grid = 0.050mm, much IPC"
+### Set 0.500 grid:
+funckey SF13 "define grid; FORM grid non_etch non_etch_x_grids 0.500; FORM grid non_etch non_etch_y_grids 0.500; FORM grid all_etch all_etch_x_grids 0.500; FORM grid all_etch all_etch_y_grids 0.500; FORM grid done; echo Grid = 0.500mm, half metric :)"
+
+### Snap pick to body center:
+funckey F14 "prepopup; pop dyn_option_select 'Snap pick to@:@Symbol Center'"
+
+### Snap pick to segment vertex:
+funckey F15 "prepopup; pop dyn_option_select 'Snap pick to@:@Segment Vertex'"
+
+### Snap pick to segment midpoint:
+funckey SF15 "prepopup; pop dyn_option_select 'Snap pick to@:@Segment Midpoint'"
+
+### Snap pick to pin:
+funckey F16 "prepopup; pop dyn_option_select 'Snap pick to@:@Pin'"
+### Snap pick to pad edge midpoint:
+funckey SF16 "prepopup; pop dyn_option_select 'Snap pick to@:@Pad Edge Midpoint'"
+funckey f "prepopup; pop dyn_option_select 'Snap pick to@:@Pad Edge Midpoint'"
+
+### Snap pick to intersection:
+funckey F17 "prepopup; pop dyn_option_select 'Snap pick to@:@Segment Intersection'"
+
+### Snap pick to arc center:
+funckey sF17 "prepopup; pop dyn_option_select 'Snap pick to@:@Arc/Circle Center'"
+
+
+#scriptmode +e
+
+### User Preferences section
+### This section is computer generated.
+### Please do not modify to the end of the file.
+### Place your hand edits above this section.
+###
+#set orcad_use_legacy_menu
+#set steppath = $steppath //CENSORED_IP/Allegro_Library/step
+#set psmpath = $psmpath //CENSORED_IP/Allegro_Library/symbols
+#set padpath = $padpath //CENSORED_IP/Allegro_Library/pads

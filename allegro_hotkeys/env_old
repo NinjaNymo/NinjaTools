@@ -1,0 +1,162 @@
+source $TELENV
+
+### Reload Hotkeys:
+funckey H source "C:\Cadence\User_Setup\env"
+
+### Left mousebutton on keyboard:
+funckey y 'pick_to_grid -cursor'
+
+### Rotation:
+funckey r iangle 90
+funckey R iangle 45
+
+### Mirror:
+funckey m "pop mirror"
+
+### Change Origin:
+funckey o "chg origin"
+
+### Snap pick to pin:
+funckey F3 "prepopup; pop dyn_option_select 'Snap pick to@:@Pin'"
+### Snap pick to pad edge midpoint:
+funckey SF3 "prepopup; pop dyn_option_select 'Snap pick to@:@Pad Edge Midpoint'"
+funckey f "prepopup; pop dyn_option_select 'Snap pick to@:@Pad Edge Midpoint'"
+
+### Snap pick to segment vertex:
+funckey F2 "prepopup; pop dyn_option_select 'Snap pick to@:@Segment Vertex'"
+
+### Snap pick to segment midpoint:
+funckey SF2 "prepopup; pop dyn_option_select 'Snap pick to@:@Segment Midpoint'"
+
+### Snap pick to intersection:
+funckey F4 "prepopup; pop dyn_option_select 'Snap pick to@:@Segment Intersection'"
+funckey k "prepopup; pop dyn_option_select 'Snap pick to@:@Segment Intersection'"
+
+### Snap pick to body center:
+funckey F1 "prepopup; pop dyn_option_select 'Snap pick to@:@Symbol Center'"
+
+### Snap pick to arc center:
+funckey sF4 "prepopup; pop dyn_option_select 'Snap pick to@:@Arc/Circle Center'"
+
+### Set 0.550 grid:
+funckey F5 "define grid; FORM grid non_etch non_etch_x_grids 0.550; FORM grid non_etch non_etch_y_grids 0.550; FORM grid all_etch all_etch_x_grids 0.550; FORM grid all_etch all_etch_y_grids 0.550; FORM grid done; echo Grid = 0.550mm, such via grid"
+### Set 0.1375 grid:
+funckey SF5 "define grid; FORM grid non_etch non_etch_x_grids 0.1375; FORM grid non_etch non_etch_y_grids 0.1375; FORM grid all_etch all_etch_x_grids 0.1375; FORM grid all_etch all_etch_y_grids 0.1375; FORM grid done; echo Grid = 0.1375mm, perfectly aligned tracks :D"
+
+### Set 2.00 grid:
+funckey F6 "define grid; FORM grid non_etch non_etch_x_grids 2.00; FORM grid non_etch non_etch_y_grids 2.00; FORM grid all_etch all_etch_x_grids 2.00; FORM grid all_etch all_etch_y_grids 2.00; FORM grid done; echo Grid = 2.00mm, thicc..."
+### Set 0.200 grid:
+funckey SF6 "define grid; FORM grid non_etch non_etch_x_grids 0.200; FORM grid non_etch non_etch_y_grids 0.200; FORM grid all_etch all_etch_x_grids 0.200; FORM grid all_etch all_etch_y_grids 0.200; FORM grid done; echo Grid = 0.200mm, reasonable..."
+
+### Set 1.00 grid:
+funckey F7 "define grid; FORM grid non_etch non_etch_x_grids 1.00; FORM grid non_etch non_etch_y_grids 1.00; FORM grid all_etch all_etch_x_grids 1.00; FORM grid all_etch all_etch_y_grids 1.00; FORM grid done; echo Grid = 1.00mm, metric ftw"
+### Set 0.100 grid:
+funckey SF7 "define grid; FORM grid non_etch non_etch_x_grids 0.100; FORM grid non_etch non_etch_y_grids 0.100; FORM grid all_etch all_etch_x_grids 0.100; FORM grid all_etch all_etch_y_grids 0.100; FORM grid done; echo Grid = 0.100mm, smol :)"
+
+### Set 0.500 grid:
+funckey F8 "define grid; FORM grid non_etch non_etch_x_grids 0.500; FORM grid non_etch non_etch_y_grids 0.500; FORM grid all_etch all_etch_x_grids 0.500; FORM grid all_etch all_etch_y_grids 0.500; FORM grid done; echo Grid = 0.500mm, half metric :)"
+### Set 0.050 grid:
+funckey SF8 "define grid; FORM grid non_etch non_etch_x_grids 0.050; FORM grid non_etch non_etch_y_grids 0.050; FORM grid all_etch all_etch_x_grids 0.050; FORM grid all_etch all_etch_y_grids 0.050; FORM grid done; echo Grid = 0.050mm, much IPC"
+
+### Add Line:
+funckey l "add line"
+
+### Open Grid Menu:
+funckey g "define grid"
+
+### Funckey Constraint Manager:
+funckey c "cmgr"
+
+### Color Manager:
+funckey C "color192"
+
+### Shape Select:
+funckey s "shape select"
+
+### Z-copy:
+funckey z "zcopy shape"
+
+### DRC update:
+funckey . "drc update"
+
+### DRC browse:
+funckey : "browse drcs"
+
+### Disable welcome screen:
+set allegro_no_startpage
+
+### Enable shift+rmb roam:
+### no_shiftpopup
+
+### Add connect:
+funckey w "add connect"
+
+### View Top/Bottom Components:
+funckey b 'color -toggle "REF DES/ASSEMBLY_TOP"; color -toggle "PACKAGE GEOMETRY/ASSEMBLY_TOP"'
+funckey B 'color -toggle "REF DES/ASSEMBLY_BOTTOM"; color -toggle "PACKAGE GEOMETRY/ASSEMBLY_BOTTOM"'
+
+### View Top/Bottom Component Bounds:
+funckey n 'color -toggle "PACKAGE GEOMETRY/PLACE_TOP"'
+funckey N 'color -toggle "PACKAGE GEOMETRY/PLACE_BOTTOM"'
+
+### View Top/Bottom Soldermask:
+funckey m 'color -toggle "BOARD GEOMETRY/SOLDERMASK_TOP"'
+funckey M 'color -toggle "BOARD GEOMETRY/SOLDERMASK_BOTTOM"'
+
+### View Notes Layers:
+funckey e 'color -toggle "DRAWING FORMAT/01_NOTES_SKETCH"'
+funckey E 'color -toggle "DRAWING FORMAT/02_NOTES_MECH"'
+funckey G 'color -toggle "DRAWING FORMAT/03_NOTES_GUIDES"'
+funckey v 'color -toggle "DRAWING FORMAT/04_VIA_GRID_01"'
+funckey V 'color -toggle "DRAWING FORMAT/05_VIA_GRID_02"'
+
+### Move and Change user pick:
+funckey q 'move'
+funckey Q 'prepopup; pop dyn_option_select "@:@Change user pick"'
+
+### Rats:
+funckey j "rats show"
+funckey J "rats blank"
+
+### Add Polygon:
+funckey p "shape add"
+
+### Line Angle lock:
+funckey a "FORM mini lock_direction 45"
+funckey A "form mini lock direction Off"
+
+### Set Line Widths:
+funckey t 'settoggle minw Constraint .100 .150 .300; setwindow form.mini; FORM mini acon_line_width $minw; setwindow pcb'
+# funckey t "FORM mini acon_line_width Constraint"
+funckey T "pop neck"
+
+### Assign via net:
+funckey x "via assign net"
+
+### Enable "Legacy Menu" Meaning OrCad will change menus to match Allegro
+set orcad_use_legacy_menu
+
+### Set Skill Path:
+# set skillpath = C:/SomePath
+
+### Set Material Path:
+# set materialpath = C:/SomePath
+
+### Set View Path:
+# set viewpath = . C:/SomePath
+
+### User Preferences section
+### This section is computer generated.
+### Please do not modify to the end of the file.
+### Place your hand edits above this section.
+###
+
+# unset enable_3d_include_dfa_bound
+# set align_guides_place_bound
+# set  align_guides_ratsnest
+# unset align_guides_component_origin
+# set dfa_pause_level = 3
+# set buttonfactor = 0.250000
+# unset disable_opengl
+
+

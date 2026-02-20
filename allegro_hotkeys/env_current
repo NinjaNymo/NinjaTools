@@ -37,13 +37,19 @@ funckey SF15 "prepopup; pop dyn_option_select 'Snap pick to@:@Segment Midpoint'"
 funckey F16 "prepopup; pop dyn_option_select 'Snap pick to@:@Pin'"
 ### Snap pick to pad edge midpoint:
 funckey SF16 "prepopup; pop dyn_option_select 'Snap pick to@:@Pad Edge Midpoint'"
-funckey f "prepopup; pop dyn_option_select 'Snap pick to@:@Pad Edge Midpoint'"
+#funckey f "prepopup; pop dyn_option_select 'Snap pick to@:@Pad Edge Midpoint'"
 
 ### Snap pick to intersection:
-funckey F17 "prepopup; pop dyn_option_select 'Snap pick to@:@Segment Intersection'"
+#funckey F17 "prepopup; pop dyn_option_select 'Snap pick to@:@Segment Intersection'"
+funckey F17 "prepopup; pop dyn_option_select 'Snap pick to@:@Intersection'"
 
 ### Snap pick to arc center:
-funckey sF17 "prepopup; pop dyn_option_select 'Snap pick to@:@Arc/Circle Center'"
+funckey SF17 "prepopup; pop dyn_option_select 'Snap pick to@:@Arc/Circle Center'"
+
+### Reload Hotkeys:
+funckey F22 source "C:\Cadence\User_Setup\env"
+
+
 
 
 #scriptmode +e

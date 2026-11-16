@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STEP Colorist</title>
+
+<!-- 3D preview only: OpenCascade (WASM) to read STEP geometry, three.js to draw it. -->
+<script src="https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/occt-import-js.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #15171a; --panel: #1e2125; --border: #343a41; --text: #e3e6ea;
+    --muted: #8d96a1; --accent: #4a8fe0; --accent-text: #fff; --select: #22344a;
+    --warn: #ff7b72; --ok: #5cc98a; --viewer-bg: #2a2e33; --input-bg: #15171a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  #fileName { color: var(--muted); }
+  button, .button {
+    font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  input[type=file] { display: none; }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  aside {
+    width: 360px; flex-shrink: 0; overflow-y: auto; padding: 14px;
+    background: var(--panel); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  aside h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 6px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 0; }
+
+  .colour-row {
+    display: grid; grid-template-columns: auto 1fr auto auto auto; align-items: center; gap: 8px;
+    padding: 8px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; cursor: pointer;
+  }
+  .colour-row.selected { background: var(--select); border-color: var(--accent); }
+  .swatch { width: 28px; height: 28px; border-radius: 5px; border: 1px solid rgba(255,255,255,.25); }
+  .colour-row .meta { line-height: 1.25; }
+  .colour-row .hex { font-family: ui-monospace, Consolas, monospace; }
+  .colour-row .count { color: var(--muted); font-size: 12px; }
+  .colour-row input[type=color] { width: 32px; height: 30px; padding: 0; border: none; background: none; cursor: pointer; }
+  .colour-row input[type=text] {
+    width: 78px; font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px;
+    background: var(--input-bg); color: var(--text);
+  }
+  .colour-row input[type=text].invalid { border-color: var(--warn); }
+  .colour-row .reset { padding: 3px 7px; }
+  .arrow { color: var(--muted); }
+
+  .palette { display: flex; flex-direction: column; gap: 4px; }
+  .palette button {
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+    padding: 5px 8px; text-align: left; border-color: transparent; background: none;
+  }
+  .palette button:hover { background: var(--select); border-color: var(--border); }
+  .palette .swatch { width: 22px; height: 22px; }
+  .palette .hex { font-family: ui-monospace, Consolas, monospace; color: var(--muted); font-size: 12.5px; }
+
+  .save-box { margin-top: auto; border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  #status { font-size: 12.5px; }
+  #status.error { color: var(--warn); }
+  #status.ok { color: var(--ok); }
+
+  .viewers { flex: 1; display: flex; gap: 10px; padding: 10px; min-width: 0; }
+  .viewer { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .viewer h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+  .viewer h3 small { color: var(--muted); font-weight: 400; }
+  .canvas-wrap {
+    position: relative; flex: 1; min-height: 200px; border-radius: 8px; overflow: hidden;
+    background: var(--viewer-bg); border: 1px solid var(--border);
+  }
+  .canvas-wrap canvas { display: block; width: 100%; height: 100%; }
+  .overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 20px; color: var(--muted); background: rgba(42,46,51,.85);
+    pointer-events: none;
+  }
+  .overlay[hidden] { display: none; }
+
+  body.dragging .viewers { outline: 3px dashed var(--accent); outline-offset: -8px; }
+
+  details.code { border-top: 1px solid var(--border); background: var(--panel); padding: 8px 16px; }
+  details.code summary { cursor: pointer; color: var(--muted); }
+  details.code pre {
+    max-height: 45vh; overflow: auto; background: var(--input-bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>STEP Colorist</h1>
+  <label class="button" for="fileInput">Open STEP file…</label>
+  <input id="fileInput" type="file" accept=".stp,.step,.STP,.STEP">
+  <span id="fileName">…or drop a .stp / .step file anywhere</span>
+</header>
+
+<main>
+  <aside>
+    <section>
+      <h2>Colors in file</h2>
+      <p class="hint" id="colourHint">Open a file to list its <code>COLOUR_RGB</code> colors.</p>
+      <div id="colourList"></div>
+    </section>
+
+    <section>
+      <h2>Preset colors</h2>
+      <p class="hint">Click a color above to select it, then click a preset to apply it. You can also type a hex code.</p>
+      <div class="palette" id="palette"></div>
+    </section>
+
+    <section class="save-box">
+      <div id="status"></div>
+      <button class="primary" id="saveButton" disabled>Save recolored STEP file</button>
+      <p class="hint">Downloads a <em>new</em> file. Your original file is never modified.</p>
+    </section>
+  </aside>
+
+  <div class="viewers">
+    <div class="viewer">
+      <h3>Before <small>(original file)</small></h3>
+      <div class="canvas-wrap" id="viewerBefore"><div class="overlay">No file loaded</div></div>
+    </div>
+    <div class="viewer">
+      <h3>After <small>(rendered from the exact bytes that will be saved)</small></h3>
+      <div class="canvas-wrap" id="viewerAfter"><div class="overlay">No file loaded</div></div>
+    </div>
+  </div>
+</main>
+
+<details class="code">
+  <summary>Show the code that edits the STEP file (the <code>step-file-editing</code> script block in this page)</summary>
+  <pre id="codeView"></pre>
+</details>
+
+
+<script id="step-file-editing">
+/* =========================================================================
+ *  STEP FILE EDITING — THE ONLY CODE IN THIS PAGE THAT CHANGES STEP CONTENT
+ * =========================================================================
+ *
+ *  Everything that reads colours from, or writes colours into, the STEP file
+ *  lives in this one <script> block. The rest of the page (the UI and the 3D
+ *  preview) only calls the functions below. It never edits the file text itself.
+ *
+ *  What this code does:
+ *    1. Finds every statement of the form
+ *           #<id>=COLOUR_RGB('<name>',<red>,<green>,<blue>);
+ *    2. For each colour the user remapped, it replaces the three numbers
+ *       <red>,<green>,<blue>. Nothing else is touched: the #id, the name,
+ *       and every other byte in the file stay exactly as they were.
+ *    3. Checks that (2) is true before the file can be saved.
+ *    4. Gives the result to the browser as a download (a NEW file).
+ *       Browsers cannot overwrite files on disk, so the original stays safe.
+ *
+ *  Colours are identified by their 8-bit hex value (e.g. 0.4,0.4,0.4 -> 666666),
+ *  so 0.4 and 0.400000005960464 count as the same colour.
+ * ========================================================================= */
+"use strict";
+
+/* Matches one COLOUR_RGB statement. The capture groups are:
+ *   1 head : "#12238=COLOUR_RGB('',"   (id and name, copied unchanged)
+ *   2 red, 3 green, 4 blue : the numbers, which are the only part we replace
+ *   5 tail : ")"                       (copied unchanged)
+ * The name is a STEP string: '...' where '' is an escaped quote. */
+const COLOUR_RGB_STATEMENT =
+  /(#\d+\s*=\s*COLOUR_RGB\s*\(\s*'(?:[^']|'')*'\s*,\s*)([-+.\dEe]+)\s*,\s*([-+.\dEe]+)\s*,\s*([-+.\dEe]+)(\s*\))/g;
+
+/** STEP colour numbers (0..1) -> "RRGGBB". */
+function stepRgbToHex(red, green, blue) {
+  return [red, green, blue]
+    .map(v => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0"))
+    .join("").toUpperCase();
+}
+
+/** "RRGGBB" -> three STEP REAL strings, e.g. "1.", "0.4", "0.". */
+function hexToStepReals(hex) {
+  return [0, 2, 4].map(i => {
+    const text = String(Number((parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(6)));
+    return text.includes(".") ? text : text + ".";      // A STEP REAL must contain a "."
+  });
+}
+
+/** Bytes -> text with one character per byte, so encoding can never alter the file. */
+function stepBytesToText(bytes) {
+  let text = "";
+  for (let i = 0; i < bytes.length; i += 8192) {
+    text += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  }
+  return text;
+}
+
+/** The exact reverse of stepBytesToText. */
+function stepTextToBytes(text) {
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code > 255) throw new Error("Unexpected non-byte character at position " + i);
+    bytes[i] = code;
+  }
+  return bytes;
+}
+
+/** READ ONLY: lists the distinct colours and how often each is declared.
+ *  Returns [{ hex: "666666", count: 335 }, ...], most common first. */
+function listStepColours(stepText) {
+  const counts = new Map();
+  for (const [, , red, green, blue] of stepText.matchAll(COLOUR_RGB_STATEMENT)) {
+    const hex = stepRgbToHex(Number(red), Number(green), Number(blue));
+    counts.set(hex, (counts.get(hex) || 0) + 1);
+  }
+  return [...counts].map(([hex, count]) => ({ hex, count })).sort((a, b) => b.count - a.count);
+}
+
+/** THE EDIT: rewrites the numbers of every COLOUR_RGB statement whose colour
+ *  is a key in `mapping` ({ "666666": "FF3300", ... }). Every other statement
+ *  and every other byte is returned unchanged. */
+function recolourStepText(stepText, mapping) {
+  return stepText.replace(COLOUR_RGB_STATEMENT, (statement, head, red, green, blue, tail) => {
+    const newHex = mapping[stepRgbToHex(Number(red), Number(green), Number(blue))];
+    if (!newHex) return statement;                       // colour not remapped: leave as is
+    const [newRed, newGreen, newBlue] = hexToStepReals(newHex);
+    return head + newRed + "," + newGreen + "," + newBlue + tail;
+  });
+}
+
+/** CHECK: throws unless the two texts are identical once the colour numbers
+ *  inside COLOUR_RGB statements are blanked out. This proves that only those
+ *  numbers changed (not the ids, the names, the statement count or anything else). */
+function verifyOnlyColourValuesChanged(originalText, newText) {
+  const blankColourValues = text => text.replace(COLOUR_RGB_STATEMENT, (s, head, r, g, b, tail) => head + "#" + tail);
+  if (blankColourValues(originalText) !== blankColourValues(newText)) {
+    throw new Error("Safety check failed: something other than COLOUR_RGB values would change.");
+  }
+}
+
+/** Builds the bytes of the recoloured file: decode -> recolour -> check -> encode. */
+function buildRecolouredStep(originalBytes, mapping) {
+  const originalText = stepBytesToText(originalBytes);
+  const newText = recolourStepText(originalText, mapping);
+  verifyOnlyColourValuesChanged(originalText, newText);
+  return stepTextToBytes(newText);
+}
+
+/** THE WRITE: gives the bytes to the browser as a download named `fileName`.
+ *  This is the only place where a file is produced. */
+function saveStepFile(bytes, fileName) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+/* ======================= END OF STEP FILE EDITING ======================= */
+</script>
+
+
+<script type="module">
+/* =========================================================================
+ *  USER INTERFACE + 3D PREVIEW
+ *  This part never edits STEP text. It calls listStepColours(),
+ *  buildRecolouredStep() and saveStepFile() from the block above, and passes
+ *  bytes to OpenCascade only so the model can be displayed.
+ * ========================================================================= */
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const OCCT_BASE = "https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/";
+const occtReady = window.occtimportjs({ locateFile: name => OCCT_BASE + name });
+
+const PRESETS = [
+  ["DEDEDE", "Substrate White"],
+  ["CCCCCC", "Terminal Grey"],
+  ["333333", "Casing Black"],
+  ["4D4D4D", "Plastic Black"],
+  ["EDE9DF", "Plastic White"],
+  ["CBC3B3", "Plastic Yellow"],
+  ["614537", "Capacitor Brown"],
+  ["DBBC7E", "Plating Gold"],
+];
+
+const state = {
+  fileName: "",
+  originalBytes: null,  // Uint8Array, as read from disk
+  originalModel: null,  // OpenCascade result for the original file
+  colours: [],          // [{ hex, count }]
+  mapping: {},          // { oldHex: newHex }, only for colours that changed
+  selected: null,       // hex of the selected colour row
+  outputBytes: null,    // bytes that the Save button will download
+};
+
+const $ = id => document.getElementById(id);
+document.getElementById("codeView").textContent = $("step-file-editing").textContent.trim();
+
+/* ---------------------------- 3D viewers ---------------------------- */
+// Both viewers share one camera, so rotating or zooming one also moves the other.
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1e6);
+const target = new THREE.Vector3();
+
+class Viewer {
+  constructor(wrap) {
+    this.wrap = wrap;
+    this.overlay = wrap.querySelector(".overlay");
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setClearColor(0x2a2e33);
+    wrap.prepend(this.renderer.domElement);
+
+    this.scene = new THREE.Scene();
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 1.6));
+    this.light = new THREE.DirectionalLight(0xffffff, 1.6);
+    this.scene.add(this.light, this.light.target);
+    this.model = null;
+
+    this.controls = new OrbitControls(camera, this.renderer.domElement);
+    this.controls.target = target;
+    this.controls.addEventListener("change", renderAll);
+    new ResizeObserver(() => this.resize()).observe(wrap);
+  }
+  resize() {
+    const { clientWidth: w, clientHeight: h } = this.wrap;
+    if (!w || !h) return;
+    this.renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderAll();
+  }
+  message(text) {
+    this.overlay.textContent = text || "";
+    this.overlay.hidden = !text;
+  }
+  setModel(occtResult) {
+    if (this.model) { this.scene.remove(this.model); disposeTree(this.model); }
+    this.model = occtResult ? buildThreeModel(occtResult) : null;
+    if (this.model) this.scene.add(this.model);
+    renderAll();
+  }
+  render() {
+    this.light.position.copy(camera.position);   // light follows the camera
+    this.light.target.position.copy(target);
+    this.renderer.render(this.scene, camera);
+  }
+}
+
+const viewers = { before: new Viewer($("viewerBefore")), after: new Viewer($("viewerAfter")) };
+function renderAll() { Object.values(viewers).forEach(v => v.render()); }
+
+function disposeTree(obj) {
+  obj.traverse(o => {
+    o.geometry?.dispose();
+    [].concat(o.material || []).forEach(m => m.dispose());
+  });
+}
+
+function srgb(rgb) { return new THREE.Color().setRGB(rgb[0], rgb[1], rgb[2], THREE.SRGBColorSpace); }
+
+/** Converts the OpenCascade result into three.js meshes, coloured per face. */
+function buildThreeModel(result) {
+  const group = new THREE.Group();
+  const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 });
+  for (const m of result.meshes) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(m.attributes.position.array, 3));
+    if (m.attributes.normal) geometry.setAttribute("normal", new THREE.Float32BufferAttribute(m.attributes.normal.array, 3));
+    geometry.setIndex(m.index.array);
+    if (!m.attributes.normal) geometry.computeVertexNormals();
+
+    const materials = [];
+    const materialIndex = new Map();
+    const materialFor = rgb => {
+      const key = rgb ? rgb.join(",") : "none";
+      if (!materialIndex.has(key)) {
+        materialIndex.set(key, materials.length);
+        materials.push(new THREE.MeshStandardMaterial({
+          color: rgb ? srgb(rgb) : new THREE.Color(0xcccccc),
+          metalness: 0.05, roughness: 0.65, side: THREE.DoubleSide,
+          polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+        }));
+      }
+      return materialIndex.get(key);
+    };
+
+    if (m.brep_faces?.length) {
+      for (const f of m.brep_faces) {
+        geometry.addGroup(f.first * 3, (f.last - f.first + 1) * 3, materialFor(f.color || m.color));
+      }
+    } else {
+      geometry.addGroup(0, m.index.array.length, materialFor(m.color));
+    }
+    group.add(new THREE.Mesh(geometry, materials));
+    group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 25), edgeMaterial));
+  }
+  return group;
+}
+
+function fitCamera(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  if (box.isEmpty()) return;
+  const center = box.getCenter(new THREE.Vector3());
+  const radius = box.getSize(new THREE.Vector3()).length() / 2;
+  const distance = radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.1;
+  target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(1, 0.8, 1.2).normalize().multiplyScalar(distance));
+  camera.near = distance / 1000;
+  camera.far = distance * 100;
+  camera.updateProjectionMatrix();
+  camera.lookAt(center);
+  Object.values(viewers).forEach(v => v.controls.update());
+  renderAll();
+}
+
+/** Reads STEP bytes with OpenCascade, for display only. */
+async function readModel(bytes) {
+  const occt = await occtReady;
+  // Give the browser a moment to paint the "Rendering…" overlay before the blocking parse.
+  await new Promise(r => requestAnimationFrame(() => setTimeout(r, 30)));
+  const result = occt.ReadStepFile(bytes.slice(), null);   // copy, so OpenCascade never holds our buffer
+  if (!result.success) throw new Error("OpenCascade could not read this STEP file");
+  return result;
+}
+
+/* ---------------------------- Loading a file ---------------------------- */
+async function openFile(file) {
+  state.fileName = file.name;
+  state.originalBytes = new Uint8Array(await file.arrayBuffer());
+  state.colours = listStepColours(stepBytesToText(state.originalBytes));
+  state.mapping = {};
+  state.selected = state.colours[0]?.hex ?? null;
+  state.outputBytes = null;
+  state.originalModel = null;
+
+  $("fileName").textContent = `${file.name} (${(file.size / 1e6).toFixed(2)} MB)`;
+  const total = state.colours.reduce((n, c) => n + c.count, 0);
+  $("colourHint").textContent = state.colours.length
+    ? `${state.colours.length} distinct color${state.colours.length > 1 ? "s" : ""} across ${total} COLOUR_RGB declarations.`
+    : "No COLOUR_RGB statements found in this file.";
+  renderColourList();
+  updateStatus();
+
+  viewers.before.setModel(null);
+  viewers.after.setModel(null);
+  viewers.before.message("Rendering…");
+  viewers.after.message("Rendering…");
+  try {
+    state.originalModel = await readModel(state.originalBytes);
+    viewers.before.setModel(state.originalModel);
+    viewers.before.message("");
+    fitCamera(viewers.before.model);
+    refreshAfter();
+  } catch (err) {
+    console.error(err);
+    viewers.before.message("Preview failed: " + err.message);
+    viewers.after.message("Preview failed: " + err.message);
+  }
+}
+
+$("fileInput").addEventListener("change", e => e.target.files[0] && openFile(e.target.files[0]));
+document.addEventListener("dragover", e => { e.preventDefault(); document.body.classList.add("dragging"); });
+document.addEventListener("dragleave", e => { if (!e.relatedTarget) document.body.classList.remove("dragging"); });
+document.addEventListener("drop", e => {
+  e.preventDefault();
+  document.body.classList.remove("dragging");
+  if (e.dataTransfer.files[0]) openFile(e.dataTransfer.files[0]);
+});
+
+/* ---------------------------- Colour list ---------------------------- */
+function normaliseHex(text) {
+  let hex = text.trim().replace(/^#/, "").toUpperCase();
+  if (/^[0-9A-F]{3}$/.test(hex)) hex = hex.split("").map(c => c + c).join("");
+  return /^[0-9A-F]{6}$/.test(hex) ? hex : null;
+}
+
+function setColour(oldHex, newHex) {
+  if (newHex === oldHex) delete state.mapping[oldHex];
+  else state.mapping[oldHex] = newHex;
+  renderColourList();
+  scheduleAfterRefresh();
+}
+
+function renderColourList() {
+  const list = $("colourList");
+  list.innerHTML = "";
+  for (const { hex, count } of state.colours) {
+    const newHex = state.mapping[hex] || hex;
+    const row = document.createElement("div");
+    row.className = "colour-row" + (state.selected === hex ? " selected" : "");
+    row.innerHTML = `
+      <div class="swatch" style="background:#${hex}" title="Original #${hex}"></div>
+      <div class="meta"><div class="hex">#${hex}</div><div class="count">declared ${count}×</div></div>
+      <input type="color" value="#${newHex.toLowerCase()}" title="Pick new color">
+      <input type="text" value="#${newHex}" spellcheck="false" title="New color (hex)">
+      <button class="reset" title="Reset to original" ${state.mapping[hex] ? "" : "disabled"}>↺</button>`;
+    row.addEventListener("click", () => {
+      if (state.selected === hex) return;
+      state.selected = hex;
+      list.querySelectorAll(".colour-row").forEach(r => r.classList.toggle("selected", r === row));
+    });
+    const [picker, textBox, reset] = row.querySelectorAll("input[type=color], input[type=text], button");
+    picker.addEventListener("change", () => setColour(hex, normaliseHex(picker.value)));
+    textBox.addEventListener("input", () => textBox.classList.toggle("invalid", !normaliseHex(textBox.value)));
+    textBox.addEventListener("change", () => {
+      const valid = normaliseHex(textBox.value);
+      if (valid) setColour(hex, valid);
+    });
+    textBox.addEventListener("keydown", e => e.key === "Enter" && textBox.blur());
+    reset.addEventListener("click", () => setColour(hex, hex));
+    list.append(row);
+  }
+}
+
+const palette = $("palette");
+for (const [hex, name] of PRESETS) {
+  const b = document.createElement("button");
+  b.innerHTML = `<span class="swatch" style="background:#${hex}"></span><span>${name}</span><span class="hex">#${hex}</span>`;
+  b.title = `Apply ${name} to the selected color`;
+  b.addEventListener("click", () => state.selected && setColour(state.selected, hex));
+  palette.append(b);
+}
+
+/* ---------------------------- After preview + save ---------------------------- */
+let refreshTimer = null;
+let refreshGeneration = 0;
+function scheduleAfterRefresh() {
+  updateStatus();
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(refreshAfter, 400);
+}
+
+/** Builds the output bytes and renders the After view FROM THOSE BYTES, so the
+ *  preview shows exactly what Save will download. */
+async function refreshAfter() {
+  if (!state.originalBytes) return;
+  const generation = ++refreshGeneration;
+  try {
+    state.outputBytes = buildRecolouredStep(state.originalBytes, state.mapping);
+  } catch (err) {
+    state.outputBytes = null;
+    updateStatus(err.message, "error");
+    return;
+  }
+  updateStatus();
+  if (!state.originalModel) return;                       // preview unavailable
+  if (Object.keys(state.mapping).length === 0) {         // nothing changed: output == original
+    viewers.after.setModel(state.originalModel);
+    viewers.after.message("");
+    return;
+  }
+  viewers.after.message("Rendering…");
+  try {
+    const model = await readModel(state.outputBytes);
+    if (generation !== refreshGeneration) return;         // a newer edit is already rendering
+    viewers.after.setModel(model);
+    viewers.after.message("");
+  } catch (err) {
+    if (generation === refreshGeneration) viewers.after.message("Preview failed: " + err.message);
+  }
+}
+
+function updateStatus(message, kind) {
+  const status = $("status");
+  const changedColours = Object.keys(state.mapping);
+  const changedStatements = state.colours.filter(c => state.mapping[c.hex]).reduce((n, c) => n + c.count, 0);
+  if (!message) {
+    message = !state.originalBytes ? ""
+      : changedColours.length === 0 ? "No changes yet."
+      : `${changedColours.length} color${changedColours.length > 1 ? "s" : ""} changed → ${changedStatements} COLOUR_RGB statement${changedStatements > 1 ? "s" : ""} will be rewritten. Safety check passed.`;
+    kind = changedColours.length ? "ok" : "";
+  }
+  status.textContent = message;
+  status.className = kind || "";
+  $("saveButton").disabled = !(state.outputBytes && changedColours.length && kind !== "error");
+}
+
+$("saveButton").addEventListener("click", () => {
+  const base = state.fileName.replace(/\.(stp|step)$/i, "");
+  const ext = state.fileName.match(/\.(stp|step)$/i)?.[0] || ".stp";
+  try {
+    // The whole save path: build (with safety check) -> download.
+    const bytes = buildRecolouredStep(state.originalBytes, state.mapping);
+    saveStepFile(bytes, `${base}_recolored${ext}`);
+  } catch (err) {
+    updateStatus(err.message, "error");
+  }
+});
+</script>
+</body>
+</html>

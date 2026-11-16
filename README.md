@@ -20,6 +20,9 @@ Hotkeys/settings (env file) for OrCAD/Allegro PCB Designer + configurations for 
 ### allegro_jlcpcb
 A very basic script for renaming OrCAD/Allegro PCB Designer artwork files to the naming format required by JLCPCB.
 
+### step-colorist
+A simple web-app for re-coloring step models by only changing values in its `COLOUR_RGB` statements.
+
 
 ## Other Useful Repos
 

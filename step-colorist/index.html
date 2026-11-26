@@ -377,7 +377,151 @@ function disposeTree(obj) {
   });
 }
 
-function srgb(rgb) { return new THREE.Color().setRGB(rgb[0], rgb[1], rgb[2], THREE.SRGBColorSpace); }
+// occt-import-js returns colours in linear RGB (as OpenCascade stores them), and so does
+// stepFaceColourTable() below.
+function linearRgb(rgb) { return new THREE.Color().setRGB(rgb[0], rgb[1], rgb[2], THREE.LinearSRGBColorSpace); }
+
+/* ---------------------- Face colours (preview only) ----------------------
+ *  occt-import-js loses per-face colours when a part is placed inside an
+ *  assembly: every face comes back without a colour, so only the body colour
+ *  shows. To still show those faces correctly we read the face colours from
+ *  the STEP text ourselves. READ ONLY: nothing here changes the file.
+ *
+ *  occt-import-js does not say which STEP face each of its faces is, only
+ *  their order (which follows the face list of the shell). So a mesh is
+ *  matched to solids by face count, and only when every solid with that face
+ *  count has the same colours. Otherwise the mesh keeps occt's colours.
+ * ------------------------------------------------------------------------- */
+// face-colours-begin
+const STYLE_TYPES = ["COLOUR_RGB", "DRAUGHTING_PRE_DEFINED_COLOUR", "FILL_AREA_STYLE_COLOUR",
+  "FILL_AREA_STYLE", "SURFACE_STYLE_FILL_AREA", "SURFACE_SIDE_STYLE", "SURFACE_STYLE_USAGE",
+  "PRESENTATION_STYLE_ASSIGNMENT", "PRESENTATION_STYLE_BY_CONTEXT"];
+const STYLED_ITEM_TYPES = ["STYLED_ITEM", "OVER_RIDING_STYLED_ITEM"];
+const SHELL_TYPES = ["CLOSED_SHELL", "OPEN_SHELL"];
+const ORIENTED_SHELL_TYPES = ["ORIENTED_CLOSED_SHELL", "ORIENTED_OPEN_SHELL"];
+const SOLID_TYPES = ["MANIFOLD_SOLID_BREP", "FACETED_BREP", "BREP_WITH_VOIDS", "SHELL_BASED_SURFACE_MODEL"];
+const REPRESENTATION_TYPES = ["SHAPE_REPRESENTATION", "ADVANCED_BREP_SHAPE_REPRESENTATION",
+  "MANIFOLD_SURFACE_SHAPE_REPRESENTATION", "FACETED_BREP_SHAPE_REPRESENTATION"];
+const PREVIEW_ENTITY_TYPES = new Set([...STYLE_TYPES, ...STYLED_ITEM_TYPES, ...SHELL_TYPES,
+  ...ORIENTED_SHELL_TYPES, ...SOLID_TYPES, ...REPRESENTATION_TYPES]);
+const PREDEFINED_COLOURS = { red: [1, 0, 0], green: [0, 1, 0], blue: [0, 0, 1], yellow: [1, 1, 0],
+  magenta: [1, 0, 1], cyan: [0, 1, 1], black: [0, 0, 0], white: [1, 1, 1] };
+const STEP_STRING = /'(?:[^']|'')*'/g;
+
+/** Collects the entities of the types above as Map(id -> { type, args }). */
+function readStepEntities(text) {
+  const entities = new Map();
+  const start = /#(\d+)\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
+  let match;
+  while ((match = start.exec(text))) {
+    if (!PREVIEW_ENTITY_TYPES.has(match[2])) continue;
+    let i = start.lastIndex, inString = false;
+    for (; i < text.length; i++) {               // find the closing ";" outside strings
+      const c = text.charCodeAt(i);
+      if (c === 39) inString = !inString;         // '  ('' toggles twice, so escapes are fine)
+      else if (c === 59 && !inString) break;      // ;
+    }
+    const args = text.slice(start.lastIndex, i).replace(/\)\s*$/, "");   // drop the closing ")"
+    entities.set(Number(match[1]), { type: match[2], args });
+    start.lastIndex = i;
+  }
+  return entities;
+}
+
+/** The #ids an entity refers to, in order (ignoring anything inside strings). */
+function refsOf(entity) {
+  return entity.refs ??= (entity.args.replace(STEP_STRING, "").match(/#\d+/g) || []).map(r => Number(r.slice(1)));
+}
+
+const srgbToLinear = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+
+/** Returns Map(faceCount -> [linear rgb or null per face]) for face counts that are unambiguous. */
+function stepFaceColourTable(text) {
+  const entities = readStepEntities(text);
+
+  // Style -> colour: follow the surface-style chain down to a COLOUR_RGB.
+  const styleColour = (id, seen = new Set()) => {
+    const e = entities.get(id);
+    if (!e || seen.has(id) || !STYLE_TYPES.includes(e.type)) return null;
+    seen.add(id);
+    if (e.type === "COLOUR_RGB") {
+      const values = e.args.replace(STEP_STRING, "").split(",").slice(-3).map(Number);
+      return values.some(isNaN) ? null : values.map(v => srgbToLinear(Math.min(1, Math.max(0, v))));
+    }
+    if (e.type === "DRAUGHTING_PRE_DEFINED_COLOUR") {
+      return PREDEFINED_COLOURS[(e.args.match(/'([^']*)'/)?.[1] || "").toLowerCase()] || null;
+    }
+    for (const r of refsOf(e)) { const c = styleColour(r, seen); if (c) return c; }
+    return null;
+  };
+
+  // Styled items: item id -> colour. Over-riding styles win over plain ones.
+  const itemColour = new Map();
+  const overrides = [];
+  for (const e of entities.values()) {
+    if (!STYLED_ITEM_TYPES.includes(e.type)) continue;
+    const refs = refsOf(e);
+    const styleCount = refs.length - (e.type === "STYLED_ITEM" ? 1 : 2);
+    let colour = null;
+    for (let i = 0; i < styleCount && !colour; i++) colour = styleColour(refs[i]);
+    if (!colour) continue;
+    if (e.type === "OVER_RIDING_STYLED_ITEM") overrides.push([refs[styleCount], colour]);
+    else if (!itemColour.has(refs[styleCount])) itemColour.set(refs[styleCount], colour);
+  }
+  for (const [item, colour] of overrides) itemColour.set(item, colour);
+  // Faces are not collected above, so a styled item pointing outside `entities` is a face.
+  // Without face styles, occt-import-js's body colours are already right.
+  if (![...itemColour.keys()].some(id => !entities.has(id))) return new Map();
+
+  // Faces of a solid/shell in order, each with its own colour or the nearest parent's.
+  const faceColours = (id, inherited = null) => {
+    const e = entities.get(id);
+    if (!e) return [];
+    const colour = itemColour.get(id) || inherited;
+    if (SHELL_TYPES.includes(e.type)) return refsOf(e).map(face => itemColour.get(face) || colour);
+    if (ORIENTED_SHELL_TYPES.includes(e.type) || SOLID_TYPES.includes(e.type)) {
+      return refsOf(e).flatMap(r => faceColours(r, colour));
+    }
+    return [];
+  };
+
+  // Candidates: every solid, and every representation holding several solids
+  // (occt-import-js makes one mesh per part, with the solids' faces in order).
+  const table = new Map();
+  const addCandidate = colours => {
+    if (!colours.length) return;
+    const key = colours.map(c => c ? c.join(",") : "-").join("|");
+    const previous = table.get(colours.length);
+    if (previous === undefined) table.set(colours.length, { key, colours });
+    else if (previous && previous.key !== key) table.set(colours.length, null);   // ambiguous
+  };
+  for (const [id, e] of entities) {
+    if (SOLID_TYPES.includes(e.type)) addCandidate(faceColours(id));
+    else if (REPRESENTATION_TYPES.includes(e.type)) {
+      const solids = refsOf(e).filter(r => SOLID_TYPES.includes(entities.get(r)?.type));
+      if (solids.length > 1) addCandidate(solids.flatMap(s => faceColours(s)));
+    }
+  }
+  const result = new Map();
+  for (const [count, entry] of table) if (entry) result.set(count, entry.colours);
+  return result;
+}
+
+/** Fills in face colours that occt-import-js left empty. Returns { filled, unmatched } mesh counts. */
+function applyFaceColours(occtResult, table) {
+  const stats = { filled: 0, unmatched: 0 };
+  if (!table.size) return stats;
+  for (const m of occtResult.meshes) {
+    const faces = m.brep_faces || [];
+    if (!faces.length || faces.every(f => f.color)) continue;     // occt already has them all
+    const colours = table.get(faces.length);
+    if (!colours) { stats.unmatched++; continue; }
+    faces.forEach((f, i) => { if (!f.color && colours[i]) f.color = colours[i]; });
+    stats.filled++;
+  }
+  return stats;
+}
+// face-colours-end
 
 /** Converts the OpenCascade result into three.js meshes, coloured per face. */
 function buildThreeModel(result) {
@@ -397,7 +541,7 @@ function buildThreeModel(result) {
       if (!materialIndex.has(key)) {
         materialIndex.set(key, materials.length);
         materials.push(new THREE.MeshStandardMaterial({
-          color: rgb ? srgb(rgb) : new THREE.Color(0xcccccc),
+          color: rgb ? linearRgb(rgb) : new THREE.Color(0xcccccc),
           metalness: 0.05, roughness: 0.65, side: THREE.DoubleSide,
           polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
         }));
@@ -434,13 +578,20 @@ function fitCamera(object) {
   renderAll();
 }
 
-/** Reads STEP bytes with OpenCascade, for display only. */
+/** Reads STEP bytes with OpenCascade, for display only, then fills in the
+ *  face colours occt-import-js missed (see stepFaceColourTable). */
 async function readModel(bytes) {
   const occt = await occtReady;
   // Give the browser a moment to paint the "Rendering…" overlay before the blocking parse.
   await new Promise(r => requestAnimationFrame(() => setTimeout(r, 30)));
   const result = occt.ReadStepFile(bytes.slice(), null);   // copy, so OpenCascade never holds our buffer
   if (!result.success) throw new Error("OpenCascade could not read this STEP file");
+  try {
+    const stats = applyFaceColours(result, stepFaceColourTable(stepBytesToText(bytes)));
+    if (stats.unmatched) console.warn(`Face colours: ${stats.unmatched} mesh(es) could not be matched; showing OpenCascade's colours for them.`);
+  } catch (err) {
+    console.warn("Face colours could not be read; showing OpenCascade's colours.", err);
+  }
   return result;
 }
 
